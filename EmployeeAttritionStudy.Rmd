@@ -1,0 +1,397 @@
+---
+title: "Employee Attrition Study"
+author: "VijaySrikanth"
+date: "4/12/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, error = FALSE, warning = FALSE)
+```
+
+## R Markdown
+This study is to provide insights for Employee Attrition factors to DDSAnalytics company.This study gives top 3 factors that are related to employee attrition and presents best models to predict Attrition of employee and Monthly Income
+The presentation of this study is https://youtu.be/EEdthBPJkpo 
+
+
+```{r}
+library(rmarkdown)
+library(knitr)
+library(jsonlite)
+library(RCurl)
+library(class)
+library(httr)
+library(caret)
+library(e1071)
+library(ggplot2)
+library(magrittr)
+library(plyr)
+library(dplyr)
+library(tm)
+library(tidyr)
+library(tidyverse)
+library(maps)
+library(mapproj)
+library(stringr)
+library(VIM)
+library(mice)
+library(forcats)
+library(MASS)
+library(GGally)
+library(corrgram)
+
+
+#Reading Data set with 870 observatoins and 36 columns---
+
+AttritionData <- read.csv("CaseStudy2-data.csv",header=TRUE, strip.white = TRUE)
+# Reading test data set for Attrition prediction 
+AttritionPredData<- read.csv("CaseStudy2CompSet No Attrition.csv",header=TRUE, strip.white = TRUE)
+# Reading test data set for Monthly Income prediction 
+
+AttritionSalaryData<- read.csv("CaseStudy2CompSetNoSalary.csv",header=TRUE, strip.white = TRUE)
+
+#AttritionData set contains 870 observations and 36 variables
+
+# Summary of Given training set---
+str(AttritionData)
+
+##After Checking Missing values,we found there are no missing values in data set which is good for our research ,no need to apply any imputation techniques.
+
+na_count <- sapply(AttritionData, function(y) sum(length(which(is.na(y)))))
+na_count <- data.frame(na_count)
+
+
+## Upon looking at data set found some columns which are not useful Removing columns which are not useful for analysis,because they have same value across the data set without variance
+
+attdata=subset(AttritionData,select = -c(EmployeeNumber,Over18,StandardHours))
+attdata<-AttritionData
+
+
+##Changing categorical values to numerical values
+
+attdata$Attrition1[attdata$Attrition== "Yes"] <-1
+attdata$Attrition1[attdata$Attrition== "No"] <-0
+attdata$BusinessTravel1[attdata$BusinessTravel== "Non-Travel"] <-1
+attdata$BusinessTravel1[attdata$BusinessTravel== "Travel_Rarely"] <-2
+attdata$BusinessTravel1[attdata$BusinessTravel== "Travel_Frequently"] <-3
+attdata$Department1[attdata$Department== "Human Resources"] <-1
+attdata$Department1[attdata$Department== "Research & Development"] <-2
+attdata$Department1[attdata$Department== "Sales"] <-3
+attdata$EducationField1[attdata$EducationField== "Human Resources"] <-1
+attdata$EducationField1[attdata$EducationField== "Life Sciences"] <-2
+attdata$EducationField1[attdata$EducationField== "Marketing"] <-3
+attdata$EducationField1[attdata$EducationField== "Medical"] <-4
+attdata$EducationField1[attdata$EducationField== "Other"] <-5
+attdata$EducationField1[attdata$EducationField== "Technical Degree"] <-6
+attdata$Gender1[attdata$Gender== "Female"] <-1
+attdata$Gender1[attdata$Gender== "Male"] <-2
+attdata$JobRole1[attdata$JobRole== "Human Resources"] <-1
+attdata$JobRole1[attdata$JobRole== "Healthcare Representative"] <-2
+attdata$JobRole1[attdata$JobRole== "Laboratory Technician"] <-3
+attdata$JobRole1[attdata$JobRole== "Manager"] <-4
+attdata$JobRole1[attdata$JobRole== "Manufacturing Director"] <-5
+attdata$JobRole1[attdata$JobRole== "Research Director"] <-6
+attdata$JobRole1[attdata$JobRole== "Research Scientist"] <-7
+attdata$JobRole1[attdata$JobRole== "Sales Executive"] <-8
+attdata$JobRole1[attdata$JobRole== "Sales Representative"] <-9
+attdata$MaritalStatus1[attdata$MaritalStatus== "Divorced"] <-1
+attdata$MaritalStatus1[attdata$MaritalStatus== "Married"] <-2
+attdata$MaritalStatus1[attdata$MaritalStatus== "Single"] <-3
+attdata$OverTime1[attdata$OverTime== "Yes"] <-1
+attdata$OverTime1[attdata$OverTime== "No"] <-0
+
+## After changing to numerical values the data set looks like below
+str(attdata)
+
+#Out of 36 variables,performed linear regression to find out variables which are related to Employee Attrition
+
+Model <-lm(Attrition1 ~  Age + BusinessTravel1 + DailyRate + Department1 + DistanceFromHome + Education + EducationField1 + EnvironmentSatisfaction + Gender1 + HourlyRate + JobInvolvement + JobLevel + JobRole1 + JobSatisfaction + MaritalStatus1 + MonthlyIncome + MonthlyRate + NumCompaniesWorked + OverTime1 + PercentSalaryHike + PerformanceRating + RelationshipSatisfaction + StockOptionLevel + TotalWorkingYears + TrainingTimesLastYear + WorkLifeBalance + YearsAtCompany + YearsInCurrentRole + YearsSinceLastPromotion + YearsWithCurrManager, data=attdata)
+
+summary(Model)
+
+##Below are the factors that are positively or negatively related to Attrition,These are determined based on siginificant p value from above model.
+
+#Age  -
+#BusinessTravel1 +
+#Department1 +
+#DistanefromHome +
+#Envsatisfction -
+#jobinvolvement -
+#jobsatisfaction -
+#maritalstatus +
+#numcompaniesworkd+
+#overtime +
+#relationshipsatisfaction -
+#worklifebalance -
+#yearsincelastpromotion +
+
+##After above modelling checking to remove any outliers 
+
+##Checking outliers
+
+cooksd <- cooks.distance(Model) # distance
+# Plotting cook's distance
+plot(cooksd, pch="*", cex=2, main="Outliers using Cooks Distance") %>% #plot
+abline(h = 5*mean(cooksd, na.rm=T), col="black") %>%  # cut-off line
+text(x=1:length(cooksd)+1, y=cooksd, labels=ifelse(cooksd>5*mean(cooksd, na.rm=T),names(cooksd),""), col="red")  #labels
+
+#Removing rows which are considered as outliers from plots
+attdatalm<-attdata[-c(363,485,510),]
+
+##perform modelling again after removing outliers
+Model <-lm(Attrition1 ~  Age + BusinessTravel1 + DailyRate + Department1 + DistanceFromHome + Education + EducationField1 + EnvironmentSatisfaction + Gender1 + HourlyRate + JobInvolvement + JobLevel + JobRole1 + JobSatisfaction + MaritalStatus1 + MonthlyIncome + MonthlyRate + NumCompaniesWorked + OverTime1 + PercentSalaryHike + PerformanceRating + RelationshipSatisfaction + StockOptionLevel + TotalWorkingYears + TrainingTimesLastYear + WorkLifeBalance + YearsAtCompany + YearsInCurrentRole + YearsSinceLastPromotion + YearsWithCurrManager+Attrition1, data=attdatalm)
+
+cooksd <- cooks.distance(Model) # distance
+# Plotting cook's distance
+plot(cooksd, pch="*", cex=2, main="Outliers using Cooks Distance") %>% #plot
+abline(h = 5*mean(cooksd, na.rm=T), col="black") %>%  # cut-off line
+text(x=1:length(cooksd)+1, y=cooksd, labels=ifelse(cooksd>5*mean(cooksd, na.rm=T),names(cooksd),""), col="red")
+
+attdata2<-attdatalm[-c(754,158,377),]
+
+##Below are the is final model
+
+Modelupdated<-lm(Attrition1~Age+BusinessTravel1+EnvironmentSatisfaction+JobInvolvement+JobSatisfaction+MaritalStatus1+NumCompaniesWorked +RelationshipSatisfaction+WorkLifeBalance+OverTime1+Department1+DistanceFromHome+JobLevel+JobRole1+TotalWorkingYears+YearsWithCurrManager,data=attdata2)
+
+##Performin correlation to find top threee factors
+
+summary(Modelupdated)
+cordata = AttritionData[,c(2,5,12,14,15,18,20,21,22,26,27,29,30,31,32,33,34,35,36)]
+corr <- round(cor(cordata), 1)
+corr
+
+corrgram(attdata2[,c("Attrition1","Age","BusinessTravel1","DistanceFromHome","EnvironmentSatisfaction","JobInvolvement","JobSatisfaction","MaritalStatus1","NumCompaniesWorked","OverTime1","RelationshipSatisfaction","WorkLifeBalance")], order = NULL, lower.panel = panel.shade, upper.panel = NULL, text.panel = panel.txt, 
+    main = "Attrition Data")
+##Age,Ovetime,Maritalstatus are the top three factors which effects attrition rate .
+
+```
+
+
+## Visualizations
+
+```{r}
+#Monthly Income vs Attrition
+
+ggplot(attdatalm,aes(x=MonthlyIncome,fill=Attrition))+geom_density()+ggtitle("Monthly Income vs Attrition")
+
+#Age vs Attrition
+ggplot(attdatalm,aes(x=Age,fill=Attrition))+geom_density()+ggtitle("Age vs Attrition")
+
+#Monthly Income vs Job Satisfaction vs Attrition
+ggplot(attdatalm,aes(y=MonthlyIncome,x=JobSatisfaction,color=Attrition))+geom_point()+geom_point(position="jitter")+ggtitle("Monthly Income vs Job Satisfaction vs Attrition")
+
+
+ggplot(attdatalm,aes(x=WorkLifeBalance,y=DistanceFromHome,color=Attrition))+geom_point()+geom_point(position="jitter")+ggtitle("WorkLifeBalance vs DistanceFromHome vs Attrition")
+
+ggplot(attdatalm,aes(x=Age,y=OverTime1,color=Attrition))+geom_boxplot()+geom_point(position="jitter")+ggtitle("Age vs OverTime1 vs Attrition")
+
+ggplot(attdatalm,aes(x=PercentSalaryHike
+,fill=Attrition))+geom_histogram()+ggtitle("PercentSalaryHike vs Attrition")
+
+
+attdatalm %>% ggplot(aes(x = JobRole, y = MonthlyIncome,)) + geom_boxplot() + theme(axis.text.x = element_text(angle = 90))
+
+
+
+attdata2<-attdatalm
+
+```
+## Prediction Modelling
+Performing both KNN and NB method for prediction modelling and compare both for better specificty and sensitivity and accuracy.
+We will us ethe best model to redict Attrition and salary for the given separate data sets
+```{r}
+#Finding k value by performing 25 iterations after splitting 
+##set.seed(3)
+iterations = 25
+numks = 90
+splitPerc = .75
+
+masterAcc = matrix(nrow = iterations, ncol = numks)
+
+for(j in 1:iterations)
+{
+  trainattInd = sample(1:dim(attdata2)[1],round(splitPerc * dim(attdata2)[1]))
+  train = attdata2[trainattInd,]
+  test = attdata2[-trainattInd,]
+  for(i in 1:numks)
+  {
+    classifications = knn(train[,c(2,43,44)],test[,c(2,43,44)],train$Attrition1, prob = TRUE, k = i)
+    table(classifications,test$Attrition1)
+    CM = confusionMatrix(table(classifications,test$Attrition1))
+    masterAcc[j,i] = CM$overall[1]
+  }
+  
+}
+
+MeanAcc = colMeans(masterAcc)
+
+plot(seq(1,numks,1),MeanAcc, type = "l")
+
+which.max(MeanAcc)
+max(MeanAcc)
+```
+```{r}
+
+#KNN method
+
+  trainattInd = sample(1:dim(attdata2)[1],round(splitPerc * dim(attdata2)[1]))
+train = attdata2[trainattInd,]
+  test = attdata2[-trainattInd,]
+      classifications = knn(train[,c(2,5,12,14,15,18,20,21,22,25,26,27,29,30,31,32,33,34,35,36,43,44)],test[,c(2,5,12,14,15,18,20,21,22,25,26,27,29,30,31,32,33,34,35,36,43,44)],train$Attrition1,k=16)
+      table(classifications,test$Attrition1)
+    CM = confusionMatrix(table(classifications,test$Attrition1))
+    
+
+CM
+
+```
+```{r}
+#Naive Bayes method
+modelnb = naiveBayes(train[,c(2,5,12,14,15,18,20,21,22,25,26,27,29,30,31,32,33,34,35,36,43,44)],as.factor(train$Attrition1))
+
+dvv<-predict(modelnb,test[,c(2,5,12,14,15,18,20,21,22,25,26,27,29,30,31,32,33,34,35,36,43,44)])
+
+table(predict(modelnb,test[,c(2,5,12,14,15,18,20,21,22,25,26,27,29,30,31,32,33,34,35,36,43,44)]),as.factor(test$Attrition1))
+
+CM = confusionMatrix(table(predict(modelnb,test[,c(2,5,12,14,15,18,20,21,22,25,26,27,29,30,31,32,33,34,35,36,43,44)]),as.factor(test$Attrition1)))
+
+CM
+
+```
+##Prediction of Attrition and monthly income for given data sets,First we will convert categorical variables to numberical similarly as above and perform NB classification technique and linear regression for predicting Attrition and Monthly income of given data sets
+
+```{r}
+
+attdata3<-attdata2
+attdata3=subset(attdata3,select = -c(Attrition))
+
+
+attpreddata=subset(AttritionPredData,select = -c(EmployeeCount,EmployeeNumber,Over18,StandardHours))
+attpreddata<-AttritionPredData
+
+
+
+#Changing variables to numeric for test Data set for predicting Attrition 
+##attpreddata$Attrition1[attpreddata$Attrition== "Yes"] <-1
+##attpreddata$Attrition1[attpreddata$Attrition== "No"] <-0
+attpreddata$BusinessTravel1[attpreddata$BusinessTravel== "Travel_Rarely"] <-2
+attpreddata$BusinessTravel1[attpreddata$BusinessTravel== "Travel_Frequently"] <-3
+attpreddata$Department1[attpreddata$Department== "Human Resources"] <-1
+attpreddata$Department1[attpreddata$Department== "Research & Development"] <-2
+attpreddata$Department1[attpreddata$Department== "Sales"] <-3
+attpreddata$EducationField1[attpreddata$EducationField== "Human Resources"] <-1
+attpreddata$EducationField1[attpreddata$EducationField== "Life Sciences"] <-2
+attpreddata$EducationField1[attpreddata$EducationField== "Marketing"] <-3
+attpreddata$EducationField1[attpreddata$EducationField== "Medical"] <-4
+attpreddata$EducationField1[attpreddata$EducationField== "Other"] <-5
+attpreddata$EducationField1[attpreddata$EducationField== "Technical Degree"] <-6
+attpreddata$Gender1[attpreddata$Gender== "Female"] <-1
+attpreddata$Gender1[attpreddata$Gender== "Male"] <-2
+attpreddata$JobRole1[attpreddata$JobRole== "Human Resources"] <-1
+attpreddata$JobRole1[attpreddata$JobRole== "Healthcare Representative"] <-2
+attpreddata$JobRole1[attpreddata$JobRole== "Laboratory Technician"] <-3
+attpreddata$JobRole1[attpreddata$JobRole== "Manager"] <-4
+attpreddata$JobRole1[attpreddata$JobRole== "Manufacturing Director"] <-5
+attpreddata$JobRole1[attpreddata$JobRole== "Research Director"] <-6
+attpreddata$JobRole1[attpreddata$JobRole== "Research Scientist"] <-7
+attpreddata$JobRole1[attpreddata$JobRole== "Sales Executive"] <-8
+attpreddata$JobRole1[attpreddata$JobRole== "Sales Representative"] <-9
+attpreddata$MaritalStatus1[attpreddata$MaritalStatus== "Divorced"] <-1
+attpreddata$MaritalStatus1[attpreddata$MaritalStatus== "Married"] <-2
+attpreddata$MaritalStatus1[attpreddata$MaritalStatus== "Single"] <-3
+attpreddata$OverTime1[attpreddata$OverTime== "Yes"] <-1
+attpreddata$OverTime1[attpreddata$OverTime== "No"] <-0
+
+
+
+#Changing variables to numeric for test Data set for predicting MonthlyIncome 
+
+##AttritionSalaryData
+
+attsaldata=subset(AttritionSalaryData,select = -c(EmployeeCount,EmployeeNumber,Over18,StandardHours))
+
+
+attsaldata$Attrition1[attsaldata$Attrition== "Yes"] <-1
+attsaldata$Attrition1[attsaldata$Attrition== "No"] <-0
+attsaldata$BusinessTravel1[attsaldata$BusinessTravel== "Travel_Rarely"] <-2
+attsaldata$BusinessTravel1[attsaldata$BusinessTravel== "Travel_Frequently"] <-3
+attsaldata$Department1[attsaldata$Department== "Human Resources"] <-1
+attsaldata$Department1[attsaldata$Department== "Research & Development"] <-2
+attsaldata$Department1[attsaldata$Department== "Sales"] <-3
+attsaldata$EducationField1[attsaldata$EducationField== "Human Resources"] <-1
+attsaldata$EducationField1[attsaldata$EducationField== "Life Sciences"] <-2
+attsaldata$EducationField1[attsaldata$EducationField== "Marketing"] <-3
+attsaldata$EducationField1[attsaldata$EducationField== "Medical"] <-4
+attsaldata$EducationField1[attsaldata$EducationField== "Other"] <-5
+attsaldata$EducationField1[attsaldata$EducationField== "Technical Degree"] <-6
+attsaldata$Gender1[attsaldata$Gender== "Female"] <-1
+attsaldata$Gender1[attsaldata$Gender== "Male"] <-2
+attsaldata$JobRole1[attsaldata$JobRole== "Human Resources"] <-1
+attsaldata$JobRole1[attsaldata$JobRole== "Healthcare Representative"] <-2
+attsaldata$JobRole1[attsaldata$JobRole== "Laboratory Technician"] <-3
+attsaldata$JobRole1[attsaldata$JobRole== "Manager"] <-4
+attsaldata$JobRole1[attsaldata$JobRole== "Manufacturing Director"] <-5
+attsaldata$JobRole1[attsaldata$JobRole== "Research Director"] <-6
+attsaldata$JobRole1[attsaldata$JobRole== "Research Scientist"] <-7
+attsaldata$JobRole1[attsaldata$JobRole== "Sales Executive"] <-8
+attsaldata$JobRole1[attsaldata$JobRole== "Sales Representative"] <-9
+attsaldata$MaritalStatus1[attsaldata$MaritalStatus== "Divorced"] <-1
+attsaldata$MaritalStatus1[attsaldata$MaritalStatus== "Married"] <-2
+attsaldata$MaritalStatus1[attsaldata$MaritalStatus== "Single"] <-3
+attsaldata$OverTime1[attsaldata$OverTime== "Yes"] <-1
+attsaldata$OverTime1[attsaldata$OverTime== "No"] <-0
+
+##attdata3=subset(attdata3,select = -c(Attrition))
+
+
+# Prediction using NB method
+
+modelnb = naiveBayes(attdata3[,c(2,4,11,13,14,17,19,20,21,24,25,26,28,29,30,31,32,33,34,35,42,43)],as.factor(attdata3$Attrition1))
+
+summary(modelnb)
+
+PredAttrition<-predict(modelnb,attpreddata[,c(2,4,11,13,14,17,19,20,21,24,25,26,28,29,30,31,32,33,34,35,41,42)])
+
+PredAttrition
+
+#linear regression for predictin salary
+
+Model <-lm(MonthlyIncome ~  Age + BusinessTravel1 + DailyRate + Department1 + DistanceFromHome + Education + EducationField1 + EnvironmentSatisfaction + Gender1 + HourlyRate + JobInvolvement + JobLevel + JobRole1 + JobSatisfaction + MaritalStatus1 + MonthlyIncome + MonthlyRate + NumCompaniesWorked + OverTime1 + PercentSalaryHike + PerformanceRating + RelationshipSatisfaction + StockOptionLevel + TotalWorkingYears + TrainingTimesLastYear + WorkLifeBalance + YearsAtCompany + YearsInCurrentRole + YearsSinceLastPromotion + YearsWithCurrManager+Attrition1, data=attdata)
+
+summary(Model)
+
+cooksd <- cooks.distance(Model) # distance
+# Plotting cook's distance
+plot(cooksd, pch="*", cex=2, main="Outliers using Cooks Distance") %>% #plot
+abline(h = 5*mean(cooksd, na.rm=T), col="black") %>%  # cut-off line
+text(x=1:length(cooksd)+1, y=cooksd, labels=ifelse(cooksd>5*mean(cooksd, na.rm=T),names(cooksd),""), col="red")  #labels
+
+#Removing outliers
+attdatalm<-attdata[-c(78,373,489,329),]
+
+Model <-lm(MonthlyIncome ~  Age + BusinessTravel1 + DailyRate + Department1 + DistanceFromHome + Education + EducationField1 + EnvironmentSatisfaction + Gender1 + HourlyRate + JobInvolvement + JobLevel + JobRole1 + JobSatisfaction + MaritalStatus1 + MonthlyIncome + MonthlyRate + NumCompaniesWorked + OverTime1 + PercentSalaryHike + PerformanceRating + RelationshipSatisfaction + StockOptionLevel + TotalWorkingYears + TrainingTimesLastYear + WorkLifeBalance + YearsAtCompany + YearsInCurrentRole + YearsSinceLastPromotion + YearsWithCurrManager+Attrition1, data=attdatalm)
+
+Modelupdated<-lm(MonthlyIncome~Department1+DistanceFromHome+JobLevel+JobRole1+TotalWorkingYears+YearsWithCurrManager,data=attdatalm)
+
+rss<-c(crossprod(Modelupdated$residuals))
+mse<-rss/length(Modelupdated$residuals)
+rmse<-sqrt(mse)
+rmse
+
+#Prediction of salaries
+modelpred_sal=predict(Modelupdated,newdata=attsaldata)
+
+
+```
+
+Conclusion: 
+
+After performing prediction modelling in both knn and Naive Bayes method.We can see NB method performs better interms of Accuracy ,Sensitivity and Specificity.Naive Bayes have >80% accuracy and Specificity as 80.8% and Specificity as 60%
+
+Employees making less than $5000 /month have highest attrition rates
+
+Over Time, Age, Marital Status and Job Involvement are top factors for attrition rate
+
+Employees with less than 5 years of company or 5 total working years are more likely to leave
+
+Naïve Bayes provides the best prediction model with an accuracy rate of 81.94%
